@@ -4,6 +4,7 @@
 #
 # See COPYING for distribution information
 
+from __future__ import with_statement
 from trac.core import *
 from trac.util import TracError, shorten_line
 from trac.util.datefmt import FixedOffset, to_timestamp, format_datetime

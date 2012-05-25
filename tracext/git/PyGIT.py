@@ -18,6 +18,33 @@ from contextlib import contextmanager
 import cStringIO
 import codecs
 
+def terminate(process):
+    """
+    Kills a process, useful on 2.5 where subprocess.Popens don't have a
+    terminate method.
+
+
+    Used here because we're stuck on 2.5 and don't have Popen.terminate
+    goodness.
+    """
+
+    def terminate_win(process):
+        import win32process
+        return win32process.TerminateProcess(process._handle, -1)
+
+    def terminate_nix(process):
+        import signal
+        return os.kill(process.pid, signal.SIGTERM)
+
+    terminate_default = terminate_nix
+
+    handlers = {
+        "win32": terminate_win,
+        "linux2": terminate_nix
+    }
+
+    return handlers.get(sys.platform, terminate_default)(process)
+
 __all__ = ["git_version", "GitError", "GitErrorSha", "Storage", "StorageFactory"]
 
 class GitError(Exception):
@@ -61,7 +88,8 @@ class GitCore(object):
 
         #print >>sys.stderr, "DEBUG:", git_cmd, cmd_args
 
-        p = self.__pipe(git_cmd, *cmd_args, stdout=PIPE, stderr=PIPE)
+        kwds = dict(stdout=PIPE,stderr=PIPE)
+        p = self.__pipe(git_cmd, *cmd_args, **kwds)
 
         stdout_data, stderr_data = p.communicate()
         #TODO, do something with p.returncode, e.g. raise exception
@@ -72,7 +100,8 @@ class GitCore(object):
         return self.__pipe('cat-file', '--batch', stdin=PIPE, stdout=PIPE)
 
     def log_pipe(self, *cmd_args):
-        return self.__pipe('log', *cmd_args, stdout=PIPE)
+        kwds = dict(stdout=PIPE)
+        return self.__pipe('log', *cmd_args, **kwds)
 
     def __getattr__(self, name):
         if name[0] == '_' or name in ['cat_file_batch', 'log_pipe']:
@@ -741,7 +770,7 @@ class Storage(object):
                         except ValueError:
                             break
             f.close()
-            p[0].terminate()
+            terminate(p[0])
             p[0].wait()
             p[:] = []
             while True: yield None
@@ -757,7 +786,7 @@ class Storage(object):
 
         if p:
             p[0].stdout.close()
-            p[0].terminate()
+            terminate(p[0])
             p[0].wait()
 
     def last_change(self, sha, path, historian=None):
